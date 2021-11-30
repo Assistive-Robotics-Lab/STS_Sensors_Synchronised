@@ -1,0 +1,18 @@
+<?xml version="1.0" ?>
+<launch>
+
+    
+
+    <node name="Launch" type="sts_launch.py" pkg="sts_launch" output="screen"/>
+
+    <node name="Balance" type="Force_cell_receiver.py" pkg="sts_balanceboard_test" output="screen"/>
+
+    <node name="XSens" type="xsens_pose_rx_tf.py" pkg="xsens_streamer" output="screen"/>
+
+    <node name="Seating" type="seating_mat.py" pkg="seating_mat_driver" output="screen"/>
+
+
+
+
+
+</launch>
