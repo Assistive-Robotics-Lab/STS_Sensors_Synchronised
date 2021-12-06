@@ -29,15 +29,14 @@ def seat_callback(msg):
     seat_data = msg.data
     seat_data = pd.DataFrame(seat_data)
     seat_data = seat_data.transpose()
-    seat_temp = seat_data.values.tolist()
-    #print('seat temp', seat_temp, type(seat_temp))
-    seat_temp = np.array(seat_temp)
-    seat_temp = np.insert(seat_temp, 0, float(msg.header.stamp))
-    print('seat temp', seat_temp, type(seat_temp))
+
+    seat_temp = seat_data.copy()  # just msg data
+    seat_temp = seat_temp.to_numpy()
+    seat_temp = seat_temp.flatten()
+
     seat_data = pd.concat([seat_head, seat_data], axis=1)
     seat_frame = copy.deepcopy(seat_data)
 
-    #seat_temp = [seat_head, msg.data]
    
     
 
@@ -57,11 +56,8 @@ def balance_callback(msg):
     balance_data = balance_data.transpose()
     balance_frame = copy.deepcopy(balance_data)
 
-    #balance_arr = np.append(balance_arr, balance_frame.to_numpy(), axis=0)
-    #balance_arr.append(balance_frame.values.tolist())
-    balance_temp = [balance_head, msg.front_left, msg.front_right, msg.rear_left, msg.rear_right]
+    balance_temp = [msg.front_left, msg.front_right, msg.rear_left, msg.rear_right]
 
-    # balance_arr.append(balance_temp)
     
 
 
@@ -79,15 +75,13 @@ def xsens_callback(msg): ##Assuming that this is the fastest sensor
     xsens_data = msg.data
     xsens_data = pd.DataFrame(xsens_data)
     xsens_data = xsens_data.transpose()
+
+    xsens_temp = xsens_data.copy()  # just msg data
+    xsens_temp = xsens_temp.to_numpy()
+    xsens_temp = xsens_temp.flatten()
+
     xsens_data = pd.concat([xsens_head, xsens_data], axis=0)
     xsens_frame = copy.deepcopy(xsens_data)
-
-    xsens_temp = xsens_frame.to_numpy()
-
-    # xsens_frame.iloc[0, 0] = xsens_frame.iloc[0, 0].values.astype(np.int64) // 10**9   #pyarrow tests
-    # xsens_frame = pa.Table.from_pandas(xsens_frame)
-
-
 
 
 
@@ -101,10 +95,9 @@ def read_sensors():
     global balance_arr
     global seat_arr
     global seat_temp
-    #global xsens_csv_head
-    #global balance_csv_head
     global balance_temp
     global xsens_temp
+    global time_arr
 
     
     
@@ -185,17 +178,16 @@ def read_sensors():
 
 
     #empty arrays for appending
-    # xsens_arr = np.zeros([1, len(xsens_csv_head.columns)])
-    # balance_arr = np.zeros([1, len(balance_csv_head.columns)])
-    # seat_arr = np.zeros([1, len(seat_csv_head.columns)])
     xsens_arr = []
     balance_arr = []
     seat_arr = []
 
+    time_arr = []
 
-    rospy.Subscriber('seating_raw', seating_data, callback=seat_callback, queue_size=1)  
-    rospy.Subscriber('balance_board', bboard_data, callback=balance_callback, queue_size=1)  
-    rospy.Subscriber('xsens_array', xsens_long, callback=xsens_callback, queue_size=1)
+
+    rospy.Subscriber('seating_raw', seating_data, callback=seat_callback, queue_size=10)  
+    rospy.Subscriber('balance_board', bboard_data, callback=balance_callback, queue_size=10)  
+    rospy.Subscriber('xsens_array', xsens_long, callback=xsens_callback, queue_size=10)
     #rospy.Subscriber('xsens_data', PoseArray, callback=xsens_callback, queue_size=1) #OLD message format
 
 
@@ -203,27 +195,41 @@ def read_sensors():
     
 
     while not rospy.is_shutdown():
-        time_before = rospy.get_time()
+        time_before = copy.copy(rospy.get_time())
         #print('in while loop')
         if balance_check == 1:
             #rospy.loginfo('Wrote to csv!!')
-            curr_time = rospy.get_time()
-            # balance_frame.iloc[0, 0] = copy.deepcopy(curr_time)  
-            # seat_frame.iloc[0, 0] = copy.deepcopy(curr_time) 
-            # xsens_frame.iloc[0, 0] = copy.deepcopy(curr_time)
-            # all_frame = pd.concat([xsens_frame, balance_frame, seat_frame], axis=1)
-            # balance_frame.to_csv(fr'~/Documents/{part_input}_{trial_input}_Balance.csv', mode='a', header=False, index=False)  
-            # seat_frame.to_csv(fr'~/Documents/{part_input}_{trial_input}_Seat.csv', mode='a', header=False, index=False)   
-            # xsens_frame.to_csv(fr'~/Documents/{part_input}_{trial_input}_Xsens.csv', mode='a', header=False, index=False) 
-            # all_frame.to_csv(fr'~/Documents/{part_input}_{trial_input}_Sensors.csv', mode='a', header=False, index=False)
-            balance_temp[0] = curr_time
+            time_now = rospy.get_time()
+            curr_time = copy.deepcopy(time_now)
+
+            if len(balance_temp) == 4:
+                balance_temp = np.insert(balance_temp, 0, float(curr_time))
+            else:
+                balance_temp[0] = float(curr_time)
+                
             balance_arr.append(balance_temp) 
-            xsens_temp[0] = curr_time
+
+
+            if len(xsens_temp) == 161:
+                xsens_temp = np.insert(xsens_temp, 0, float(curr_time))
+            else:
+                xsens_temp[0] = float(curr_time)
+                
             xsens_arr.append(xsens_temp) 
-            seat_temp[0] = curr_time
+
+            
+            if len(seat_temp) == 256:
+                seat_temp = np.insert(seat_temp, 0, float(curr_time))
+            else:
+                seat_temp[0] = float(curr_time)
+                
             seat_arr.append(seat_temp)
 
+            #get separate array for timestamps
+            time_arr.append(rospy.get_time())
+
         print('time diff', rospy.get_time() - time_before)
+        # print('time_now', rospy.get_time())
         rate.sleep()
 
     #rospy.spin()
@@ -233,22 +239,26 @@ def shutdown_csv_cleanup(): ## adds correct header stamps to slower sensor files
     global xsens_arr
     global balance_arr
     global seat_arr
+    global time_arr
     #print('balance_arr', balance_arr)
     rospy.loginfo('Entered shutdown callback!!')
-    # seat_csv = pd.read_csv(r'~/Documents/Seat_csv.csv')
-    # balance_csv = pd.read_csv(r'~/Documents/Balance_csv.csv')
-    # seat_csv['Header'] = balance_csv['Header']
-    #xsens_arr = pd.DataFrame([xsens_arr], columns=xsens_csv_head)
-    #xsens_arr.to_csv(fr'~/Documents/{part_input}_{trial_input}_Xsens.csv', mode='a', header=False, index=False)
-    balance_arr = np.array(balance_arr)
-    balance_arr = pd.DataFrame(data=balance_arr)
-    balance_arr.to_csv(fr'~/Documents/{part_input}_{trial_input}_Balance.csv', mode='a', header=False, index=False)  
-    seat_arr = np.array(seat_arr)
-    seat_arr = pd.DataFrame(data=seat_arr)
-    seat_arr.to_csv(fr'~/Documents/{part_input}_{trial_input}_Seat.csv', mode='a', header=False, index=False) 
-    xsens_arr = np.array(xsens_arr)
+
+    time_arr = np.transpose(time_arr)
+    
     xsens_arr = pd.DataFrame(data=xsens_arr)
+    xsens_arr.iloc[:, 0] = copy.deepcopy(time_arr)
     xsens_arr.to_csv(fr'~/Documents/{part_input}_{trial_input}_Xsens.csv', mode='a', header=False, index=False) 
+    
+    balance_arr = pd.DataFrame(data=balance_arr)
+    # balance_arr.iloc[:, 0] = copy.deepcopy(xsens_arr.iloc[:,0])
+    balance_arr.iloc[:, 0] = copy.deepcopy(time_arr)
+    balance_arr.to_csv(fr'~/Documents/{part_input}_{trial_input}_Balance.csv', mode='a', header=False, index=False)  
+ 
+    seat_arr = pd.DataFrame(data=seat_arr)
+    # seat_arr.iloc[:, 0] = copy.deepcopy(xsens_arr.iloc[:,0])
+    seat_arr.iloc[:, 0] = copy.deepcopy(time_arr)
+    seat_arr.to_csv(fr'~/Documents/{part_input}_{trial_input}_Seat.csv', mode='a', header=False, index=False) 
+    
 
 if __name__ == '__main__':
     global part_input
